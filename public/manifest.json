@@ -1,0 +1,21 @@
+{
+    "name": "Rahmah Institute",
+    "short_name": "Rahmah",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#0F172A",
+    "orientation": "portrait",
+    "icons": [
+        {
+            "src": "/Rahmah-Institute-Icon.png",
+            "type": "image/png",
+            "sizes": "192x192"
+        },
+        {
+            "src": "/Rahmah-Institute-Icon.png",
+            "type": "image/png",
+            "sizes": "512x512"
+        }
+    ]
+}
