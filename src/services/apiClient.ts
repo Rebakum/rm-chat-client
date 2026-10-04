@@ -48,6 +48,29 @@ class ApiError extends Error {
   }
 }
 
+export const redactSensitiveValues = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(redactSensitiveValues);
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, fieldValue]) => [
+        key,
+        /password|token|secret|cookie|authorization|credential/i.test(key)
+          ? '[REDACTED]'
+          : redactSensitiveValues(fieldValue),
+      ])
+    );
+  }
+  return value;
+};
+
+const redactSensitiveText = (value: string): string =>
+  value.replace(
+    /("(?:password|token|secret|cookie|authorization|credential)[^"]*"\s*:\s*)("[^"]*"|'[^']*'|[^,\s<}]+)/gi,
+    '$1"[REDACTED]"'
+  );
+
 async function request<T>(
   endpoint: string,
   options: RequestInit = {}
@@ -65,10 +88,36 @@ async function request<T>(
     headers,
   };
 
-  const response = await fetch(url, config);
-  const data: ApiResponse<T> = await response.json();
+  let response: Response;
+  try {
+    response = await fetch(url, config);
+  } catch (error) {
+    console.error('[apiClient] Request failed before receiving a response', {
+      url,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+
+  const responseText = await response.text();
+  let data: ApiResponse<T>;
+  try {
+    data = JSON.parse(responseText) as ApiResponse<T>;
+  } catch (error) {
+    console.error('[apiClient] Could not parse API response', {
+      url,
+      status: response.status,
+      body: redactSensitiveText(responseText).slice(0, 2000),
+    });
+    throw error;
+  }
 
   if (!response.ok) {
+    console.error('[apiClient] API request returned an error response', {
+      url,
+      status: response.status,
+      body: redactSensitiveValues(data),
+    });
     throw new ApiError(
       data.message || 'An error occurred',
       response.status,

@@ -33,6 +33,13 @@ export interface ChatMessage {
   replyTo?: ChatMessage | null;
 }
 
+export interface MessageEditHistoryEntry {
+  id: string;
+  previousText: string;
+  editedById: string | null;
+  editedAt: string;
+}
+
 export interface DirectChat {
   id: string;
   participant: DirectoryUser;
@@ -298,6 +305,12 @@ export const chatService = {
       .map(toMonitorRoom)
       .filter((room): room is MonitorRoom => Boolean(room));
     return { ...response, data: rooms };
+  },
+
+  async getMessageEditHistory(messageId: string) {
+    return apiClient.get<MessageEditHistoryEntry[]>(
+      `/chats/messages/${encodeURIComponent(messageId)}/edit-history`,
+    );
   },
 
   async deleteMessage(messageId: string) {

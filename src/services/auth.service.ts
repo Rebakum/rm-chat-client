@@ -1,4 +1,4 @@
-import { apiClient } from './apiClient';
+import { apiClient, redactSensitiveValues } from './apiClient';
 import type { User } from '@/types/user.types';
 
 interface RawUser {
@@ -58,7 +58,14 @@ export const normalizeUser = (raw: RawUser | null | undefined): User | null => {
 export const authService = {
   async login(data: LoginInput) {
     const response = await apiClient.post<RawUser>('/auth/login', data);
-    return { ...response, data: normalizeUser(response.data) };
+    const user = normalizeUser(response.data);
+    if (!user) {
+      console.error('[authService] Login response did not include a usable user', {
+        status: response.statusCode,
+        body: redactSensitiveValues(response),
+      });
+    }
+    return { ...response, data: user };
   },
 
   async logout() {

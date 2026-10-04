@@ -5,6 +5,7 @@ import {
   chatService,
   toChatMessage,
   type ChatMessage,
+  type MessageEditHistoryEntry,
   type MonitorRoom,
 } from "@/services/chat.service";
 import { useEffect, useState } from "react";
@@ -23,6 +24,11 @@ export default function MonitorBox({ socket, connected }: MonitorBoxProps) {
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(
     null,
   );
+  const [historyMessageId, setHistoryMessageId] = useState<string | null>(null);
+  const [messageEditHistory, setMessageEditHistory] = useState<
+    MessageEditHistoryEntry[]
+  >([]);
+  const [loadingEditHistory, setLoadingEditHistory] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -67,13 +73,56 @@ export default function MonitorBox({ socket, connected }: MonitorBoxProps) {
         current.filter((item) => item.id !== payload.messageId),
       );
     };
+    const onEdit = (raw: unknown) => {
+      const message = toChatMessage(raw as Parameters<typeof toChatMessage>[0]);
+      if (message.chatId !== activeRoomId) return;
+      setMessages((current) =>
+        current.map((item) => (item.id === message.id ? message : item)),
+      );
+      setRooms((current) =>
+        current.map((room) =>
+          room.id === activeRoomId
+            ? {
+                ...room,
+                messages: room.messages.map((item) =>
+                  item.id === message.id ? message : item,
+                ),
+              }
+            : room,
+        ),
+      );
+    };
     socket.on("receive_message", onMessage);
     socket.on("message_deleted", onDelete);
+    socket.on("message_edited", onEdit);
     return () => {
       socket.off("receive_message", onMessage);
       socket.off("message_deleted", onDelete);
+      socket.off("message_edited", onEdit);
     };
   }, [activeRoomId, socket]);
+
+  const toggleEditHistory = async (messageId: string) => {
+    if (historyMessageId === messageId) {
+      setHistoryMessageId(null);
+      return;
+    }
+    setHistoryMessageId(messageId);
+    setMessageEditHistory([]);
+    setLoadingEditHistory(true);
+    try {
+      const response = await chatService.getMessageEditHistory(messageId);
+      setMessageEditHistory(response.data || []);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to load message edit history.",
+      );
+    } finally {
+      setLoadingEditHistory(false);
+    }
+  };
 
   const monitor = async (room: MonitorRoom) => {
     if (!socket?.connected) {
@@ -226,6 +275,44 @@ export default function MonitorBox({ socket, connected }: MonitorBoxProps) {
                     message.fileName ||
                     message.type.toLowerCase()}
                 </p>
+                {message.isEdited && (
+                  <div className="mt-2 border-t border-slate-100 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => void toggleEditHistory(message.id)}
+                      className="text-[10px] font-semibold text-blue-700 hover:text-blue-900"
+                    >
+                      {historyMessageId === message.id
+                        ? "Hide edit history"
+                        : "View edit history"}
+                    </button>
+                    {historyMessageId === message.id && (
+                      <div className="mt-2 space-y-2">
+                        {loadingEditHistory ? (
+                          <p className="text-xs text-slate-500">Loading history…</p>
+                        ) : messageEditHistory.length ? (
+                          messageEditHistory.map((entry) => (
+                            <div
+                              key={entry.id}
+                              className="rounded-md bg-amber-50 p-2"
+                            >
+                              <p className="whitespace-pre-wrap break-words text-xs text-slate-700">
+                                {entry.previousText}
+                              </p>
+                              <p className="mt-1 text-[10px] text-slate-500">
+                                Edited {new Date(entry.editedAt).toLocaleString()}
+                              </p>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-xs text-slate-500">
+                            No previous versions are recorded.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <p className="mt-1 text-right text-[10px] text-slate-400">
                   {new Date(message.timestamp).toLocaleTimeString()}
                 </p>
